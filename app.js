@@ -93,11 +93,16 @@ app.use(express.static(PUBLIC_PATH));
 
 
 
-/*root page*/
+/*GET request on page load, root page*/
 app.get('/', function(reqClient, resClient){
  resClient.sendFile(PATH + '/index.html');
 });
 
+/*GET request on clicking twitter link*/
+app.get('/twitter', function(req,res){
+res.redirect('https://twitter.com/VsSudarshan');
+
+});
 
 /*POST request on page load, generate unique session token*/
 app.post('/start', (req, res) => {
@@ -554,12 +559,12 @@ function loadSite(site){
 
                                /*DEBUGGING LOGS*/
 
-const logFile = fs.createWriteStream(PATH + '/' + "logger.txt", {flags: 'w+'});
+//const logFile = fs.createWriteStream(PATH + '/' + "logger.txt", {flags: 'w+'});
 
-logFile.on('error', (err)=>{
-
-console.log("Logging Error: " + err.message);
-});
+// logFile.on('error', (err)=>{
+//
+// console.log("Logging Error: " + err.message);
+// });
 
 
 var logger = function(obj){
@@ -568,7 +573,7 @@ var logger = function(obj){
     obj = util.inspect(obj);
 
   console.log(obj);
-  logFile.write(obj + " at " + Date() + '\n');
+//  logFile.write(obj + " at " + Date() + '\n');
 }
 
 /*write memory usage every 10 minutes */
