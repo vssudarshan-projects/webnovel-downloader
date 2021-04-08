@@ -45,10 +45,13 @@ window.addEventListener("beforeunload", function(event) {
 //ping server to continue session
 var ping = setInterval(function (){
 
-  if($('#token').val().length === 0)
+  if($('#token').val().length === 0){
   clearInterval(ping);
-  else{
-   callAjax('/ping', 'POST').fail(() => {
+}else{
+   callAjax('/ping', 'POST').done((res) => {
+       if(res === '406')
+    $('#token').val('');
+   }).fail(() => {
      $('#token').val('');
  });
 }

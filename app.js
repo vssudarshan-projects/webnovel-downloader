@@ -78,7 +78,7 @@ return activeSession.get(token)
 function endSession(token){
   if(!token)
   return;
-token.token ? endProcess(token) : endProcess(getSession(token));
+endProcess(getSession(token));
 return activeSession.delete(token);
 }
 
@@ -120,9 +120,12 @@ res.send();
 /*POST request to keep session alive*/
 app.post('/ping', (req, res)=>{
   logger("\nPING " + req.body.token);
-  if(req.body.token && isSession(req.body.token))
+  if(req.body.token && isSession(req.body.token)){
   getSession(req.body.token).lastActive = Date.now();
-  res.send(Date());
+  res.send('200');
+}else {
+    res.send('406');
+  }
 });
 
 /*on form submit, post request*/
@@ -202,12 +205,12 @@ function requestPage(sessionData, siteData, chapterCount){
 
   if(sessionData.hasEnded || (Date.now() - sessionData.lastActive) >= PING_INTERVAL){ //8 seconds inactive threshold
    logger("\nNO PING (@ " + sessionData.token + ")");
-   endSession(sessionData);
+   endSession(sessionData.token);
    return;
 }
   if(sessionData.errorTick > 10){
     logger("\n\n\nCannot resolve errors. Process stopped. (@ " + sessionData.token + ")");
-    endSession(sessionData);
+    endSession(sessionData.token);
     return;
   }
 
@@ -224,7 +227,7 @@ function requestPage(sessionData, siteData, chapterCount){
       logger("\nMessage (@ " + sessionData.token + "): " + res.statusMessage);
       logger("\nProcess stopped.");
       res.resume();
-      endSession(sessionData);
+      endSession(sessionData.token);
       return;
     }
 
@@ -235,7 +238,7 @@ function requestPage(sessionData, siteData, chapterCount){
     }).once('error',(e)=>{
       logger("\n\n\nHTTPS Response Stream Error (@ " + sessionData.token + "): "+ e.message);
       logger("\nProcess stopped. (@ " + sessionData.token + ")");
-      endSession(sessionData);
+      endSession(sessionData.token);
     });
 
     res.once('end', () => {
@@ -251,7 +254,6 @@ function requestPage(sessionData, siteData, chapterCount){
 
       if(found && !sessionData.hasEnded){
        found = getChapterAndWriteToFile($, sessionData, siteData);
-       console.log("write " + found);
       }else {
         found = novelInfoAndUpdateNext($, sessionData, siteData);
         logger("Next link from main page (@ " + sessionData.token + "): " + sessionData.nextLink);
@@ -259,13 +261,13 @@ function requestPage(sessionData, siteData, chapterCount){
 
       if(sessionData.numOfChapters && ++chapterCount > sessionData.numOfChapters){
         logger("\nProcess complete. (@ " + sessionData.token + ")");
-        endSession(sessionData);
+        endSession(sessionData.token);
         return;
       }
 
       if(!found || sessionData.errorTick > 10){
       logger("Aborted. (@ " + sessionData.token + ")");
-      endSession(sessionData);
+      endSession(sessionData.token);
       return;
       }
 
@@ -280,7 +282,7 @@ function requestPage(sessionData, siteData, chapterCount){
 
       }else{
         logger("\nNo more links. (@ " + sessionData.token + ")");
-        endSession(sessionData);
+        endSession(sessionData.token);
       }
     });
 }).once('error',(e)=>{
@@ -288,7 +290,7 @@ function requestPage(sessionData, siteData, chapterCount){
 
     if(++sessionData.errorTick > 10){                    /*termination after 10 error ticks*/
       logger("\n\n\nCannot resolve errors. Process stopped.");
-      endSession(sessionData);
+      endSession(sessionData.token);
     }else {
       logger("\nWill try again in: " + ((PAGE_REQUEST_INTERVAL * 2)/1000) + " seconds.");
       setTimeout(function () {
@@ -335,6 +337,10 @@ function novelInfoAndUpdateNext($, sessionData, siteData){
 
 /*select functions based on website*/
 function getChapterAndWriteToFile($, sessionData, siteData){
+
+  if(sessionData.writeStream.socket._writableState.ended)
+  return false;
+
   var content = null;
   switch(siteData.id){
     case 0:
@@ -457,8 +463,6 @@ var canWrite  = sessionData.writeStream.write(novel, () =>{
    await drain(sessionData);
    else
    sessionData.writeStream.removeAllListeners('drain');
-
-   return true;
 }
 
 async function drain(sessionData){
