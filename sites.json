@@ -1,0 +1,14 @@
+[
+  {
+  "id": 0,
+  "baseURL": "https://novelbuddy.com",
+  "nextBtn": "#btn-next",
+  "readChapterBtn": "#readchapterbtn"
+},
+{
+  "id": 1,
+  "baseURL": "https://wuxianovels.com",
+  "nextBtn":"#btn-next",
+  "readChapterBtn": "#readchapterbtn"
+}
+]

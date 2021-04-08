@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+  <link rel="stylesheet" href="./index.css">
+  <title>Web Novel Downloader</title>
+</head>
+<body>
+    <div class="row justify-content-center form-wrapper">
+      <noscript>Sorry, your browser does not support JavaScript!</noscript>
+      <form id="get-novel-form" class="inline-form" method="POST" action="/novel">
+        <div class="input-group mb-3">
+          <span class="input-group-text">URL</span>
+          <input id = "nLink" name="nLink" type="text" class="form-control" aria-label="web-novel URL" placeholder="https://novelbuddy.com/divine-emperor-of-death" disabled>
+        </div>
+        <div class="input-group mb-3">
+            <span class="input-group-text">Number of Chapters</span>
+            <input id = "nChapter" name="nChapter" type="text" class="form-control" aria-label="Number of chapters" placeholder="25" disabled>
+            <input id = "token" name="token" type="text"  hidden>
+            <select id="nChoice" class="form-select" aria-label="Default select example" disabled>
+              <option selected value="1">All</option>
+              <option value="2">Custom</option>
+            </select>
+        </div>
+        <button id ="get-novel-btn" type="submit" class="btn btn-primary" disabled>Get Novel</button>
+      </form>
+      </div>
+    <div class="justify-content-center text-wrapper">
+      <h2>Instructions</h2><br/>
+      <ol>
+        <li>      <p>Paste the URL in the first text-box.
+          Examples:
+          <ul>
+            <li>https://novelbuddy.com/divine-emperor-of-death/chapter-2</li>
+            <li>https://novelbuddy.com/divine-emperor-of-death</li>
+          </ul>
+        </p>
+      </li>
+      <li>
+        <p>Use the second text box to specify the custom number of chapters you want to download, starting from the given link. (default is all)</p>
+        <p>Only the following URLs are supported:
+          <ul>
+            <li>www.novelbuddy.com</li>
+            <li>www.wuxiaworld.com</li>
+          </ul>
+        </p>
+      </li>
+      <li><p>The program will create a text file for every 50 chapters.</p>
+      </li>
+      <li><p>Contact me on twitter to add more URLs.</p>
+      </li>
+    </ol>
+  </div>
+</div>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+  <script src="./index.js" charset="utf-8"></script>
+</body>
+</html>
