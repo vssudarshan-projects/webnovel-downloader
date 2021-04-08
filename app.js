@@ -101,7 +101,6 @@ app.get('/', function(reqClient, resClient){
 /*GET request on clicking twitter link*/
 app.get('/twitter', function(req,res){
 res.redirect('https://twitter.com/VsSudarshan');
-
 });
 
 /*POST request on page load, generate unique session token*/
@@ -252,6 +251,7 @@ function requestPage(sessionData, siteData, chapterCount){
 
       if(found && !sessionData.hasEnded){
        found = getChapterAndWriteToFile($, sessionData, siteData);
+       console.log("write " + found);
       }else {
         found = novelInfoAndUpdateNext($, sessionData, siteData);
         logger("Next link from main page (@ " + sessionData.token + "): " + sessionData.nextLink);
@@ -308,6 +308,7 @@ function isChapterAndUpdateNext($, sessionData, siteData){
   if(elements.length !== 0){
     sessionData.nextLink = elements.attr('href');
     return true;
+
   }
 
   return false;
@@ -373,19 +374,18 @@ function novelBuddyChapter($, sessionData){
 
   sessionData.chapter.name = chDetails.splice(2, chDetails.length - 2).join(" ");
 
-
-  sessionData.chapter.content = $('.chapter__content').children('p').map(function(){
-
+//check if class name matches website
+  sessionData.chapter.content = $('.content-inner').children('p').map(function(){
     return $(this).text();
-
   }).get().join('\n\n');
+
 
   return sessionData.chapter.content;
 }
 
 
 function novelBuddyMainPage($, sessionData){
-
+    //check if class name matches website
   $('.author').children('a').each(function () {
     sessionData.author.push($(this).attr('title'));
   });
