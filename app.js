@@ -130,17 +130,17 @@ app.post("/ping", (req, res) => {
     getSession(req.body.token).lastActive = Date.now();
     res.send("200");
   } else {
-    res.send("406");
+  res.send("406");
   }
 });
 
 /*on form submit, post request*/
 app.post("/novel", function (reqNovel, resNovel) {
-  
+
   if (!reqNovel.body.token || isSession(reqNovel.body.token)) {
-    logger("Access Denied. (@" + reqNovel.body.token + ")");
+    logger("Invalid session. Access Denied. (@" + reqNovel.body.token + ")");
     endSession(reqNovel.body.token);
-    resNovel.send("Access Denied.");
+    resNovel.send("Invalid session. Access Denied.");
     return;
   }
 
@@ -179,7 +179,7 @@ app.post("/novel", function (reqNovel, resNovel) {
     requestPage(sessionData, siteData, 0);
   } else {
     logger("\n\n\nERROR: Invalid URL (@ " + sessionData.token + ")");
-    resNovel.end();
+    resNovel.end("Invalid URL");
   }
 
   sessionData.writeStream.once("error", (err) => {

@@ -7,6 +7,9 @@ $(document).ready(function () {
   //get session token
   callAjax("/start", "POST").done((token) => {
     $("#token").val(token);
+  }).fail((data, status)=>{
+    alert("There was an error! Contact system administrator.");
+    clearInterval(ping);
   });
 
   //on custom choice enable text box
@@ -45,17 +48,19 @@ window.addEventListener("beforeunload", function (event) {
 
 //ping server to continue session
 var ping = setInterval(function () {
-  if ($("#token").val().length === 0) {
-    clearInterval(ping);
-  } else {
+
     callAjax("/ping", "POST")
       .done((res) => {
-        if (res === "406") $("#token").val("");
+        if (res === "406"){
+          $("#token").val('');
+          clearInterval(ping);
+        }
       })
       .fail(() => {
-        $("#token").val("");
+        $("#token").val('');
+        clearInterval(ping);
       });
-  }
+
 }, 30000);
 
 //Ajax function to send data
