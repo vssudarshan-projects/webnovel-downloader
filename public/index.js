@@ -14,8 +14,10 @@ $('#token').val(token);
     if($(this).val() === '2'){
       $('#nChapter').attr('disabled', false);
       $('#nChapter').val(25);
-    }else
+    }else{
     $('#nChapter').attr('disabled', true);
+    $('#nChapter').val('');
+  }
   });
 
 //text box number validation
