@@ -2,7 +2,6 @@
 const https = require("https");
 const fs = require("fs");
 const EventEmitter = require("events");
-const util = require("util");
 
 /*express modules*/
 const express = require("express");
@@ -10,6 +9,11 @@ const parser = require("body-parser");
 
 /*cheerio modules*/
 const cheerio = require("cheerio"); //needs lot of memory 3mb to 3.5mb
+
+/*Custom modules*/
+const session = require ('./session.js');
+const logger = require('./logger');
+
 
 /*Environment Variables*/
 const PAGE_REQUEST_INTERVAL = process.env.PAGE_REQUEST_INTERVAL || 3000;
@@ -37,57 +41,8 @@ const sites = [
 /*Constants*/
 const siteMap = new Map();
 const job = new EventEmitter();
+
 const app = express();
-
-/*Session tracker*/
-const activeSession = new Map();
-
-/*session token generator*/
-function generateToken() {
-  let token = "";
-  let count = 0;
-  let val = 0;
-  let n = 0;
-  do {
-    val = Math.floor(Math.random() * 26);
-    n = Math.floor(Math.random() * 2);
-
-    switch (n) {
-      case 0:
-        n = 65;
-        break;
-      case 1:
-        n = 97;
-    }
-
-    val += n;
-    token += String.fromCharCode(val);
-  } while (count++ < 5);
-
-  logger("\nSession token: " + token);
-  return token;
-}
-
-function isSession(token) {
-  return activeSession.has(token);
-}
-
-function addSession(sessionData) {
-  activeSession.set(sessionData.token, sessionData);
-}
-
-function getSession(token) {
-  return activeSession.get(token);
-}
-
-/*remove session from activeSession and stop process*/
-function endSession(token) {
-  if (!token) return;
-  endProcess(getSession(token));
-  return activeSession.delete(token);
-}
-
-/*Session Tracker */
 
 /*Content-Type from client is application/x-www-form-urlencoded*/
 app.use(parser.urlencoded({ extended: true }));
@@ -105,6 +60,12 @@ app.get("/twitter", function (req, res) {
   res.redirect("https://twitter.com/VsSudarshan");
 });
 
+function generateToken(){
+  let token = session.generateToken();
+    logger.log("\nSession token: " + token);
+    return token;
+}
+
 /*POST request on page load, generate unique session token*/
 app.post("/start", (req, res) => {
   res.send(generateToken());
@@ -114,20 +75,20 @@ app.post("/start", (req, res) => {
 app.post("/stop", (req, res) => {
   if (
     req.body.token &&
-    isSession(req.body.token) &&
-    getSession(req.body.token).nextLink
+    session.isSession(req.body.token) &&
+    session.getSession(req.body.token).nextLink
   ) {
-    logger("\n\n Stop request (@" + reqNovel.body.token + ")");
-    endSession(req.body.token);
+    logger.log("\n\n Stop request (@" + reqNovel.body.token + ")");
+      endProcess(req.body.token);
   }
   res.send();
 });
 
 /*POST request to keep session alive*/
 app.post("/ping", (req, res) => {
-  logger("\nPING " + req.body.token);
-  if (req.body.token && isSession(req.body.token)) {
-    getSession(req.body.token).lastActive = Date.now();
+  logger.log("\nPING " + req.body.token);
+  if (req.body.token && session.isSession(req.body.token)) {
+    session.getSession(req.body.token).lastActive = Date.now();
     res.send("200");
   } else {
   res.send("406");
@@ -137,9 +98,9 @@ app.post("/ping", (req, res) => {
 /*on form submit, post request*/
 app.post("/novel", function (reqNovel, resNovel) {
 
-  if (!reqNovel.body.token || isSession(reqNovel.body.token)) {
-    logger("Invalid session. Access Denied. (@" + reqNovel.body.token + ")");
-    endSession(reqNovel.body.token);
+  if (!reqNovel.body.token || session.isSession(reqNovel.body.token)) {
+    logger.log("Invalid session. Access Denied. (@" + reqNovel.body.token + ")");
+    endProcess(reqNovel.body.token);
     resNovel.send("Invalid session. Access Denied.");
     return;
   }
@@ -163,39 +124,43 @@ app.post("/novel", function (reqNovel, resNovel) {
   let siteData = getSiteData(sessionData.currentLink);
 
   if (siteData) {
-    logger(
+    logger.log(
       "\n\n\nRequested URL: (@ " +
         sessionData.token +
         "): " +
         sessionData.currentLink
     );
-    logger(
+    logger.log(
       "\nNumber of Chapters: (@ " +
         sessionData.token +
         "): " +
         sessionData.numOfChapters
     );
-    addSession(sessionData);
+    session.addSession(sessionData);
     requestPage(sessionData, siteData, 0);
   } else {
-    logger("\n\n\nERROR: Invalid URL (@ " + sessionData.token + ")");
+    logger.log("\n\n\nERROR: Invalid URL (@ " + sessionData.token + ")");
     resNovel.end("Invalid URL");
   }
 
   sessionData.writeStream.once("error", (err) => {
-    logger(
+    logger.log(
       "\n\n\nStream Write Error (@ " + sessionData.token + "): " + err.message
     );
     sessionData.errorTick = 11;
   });
 });
 
-function endProcess(sessionData) {
+function endProcess(token) {
   //final clean up and session end
-  let wait = 3000;
+  if (!token) return;
+
+  let sessionData = session.getSession(token);
   sessionData.hasEnded = true;
 
-  logger(
+  let wait = 3000;
+
+  logger.log(
     "Wait " +
       wait / 1000 +
       " seconds for write processes to end. (" +
@@ -204,11 +169,12 @@ function endProcess(sessionData) {
   );
 
   setTimeout(() => {
-    logger("\n\n\nSession Ended: (" + sessionData.token + ")");
+    logger.log("\n\n\nSession Ended: (" + sessionData.token + ")");
     sessionData.writeStream.removeAllListeners("error");
     sessionData.writeStream.end();
     sessionData.writeStream.send(); /*THIS LINE IS ONLY FOR WRITE ON CLIENT DISK */
     sessionData = null;
+    session.endSession(token);
   }, wait);
 }
 
@@ -223,18 +189,17 @@ function requestPage(sessionData, siteData, chapterCount) {
     sessionData.hasEnded ||
     Date.now() - sessionData.lastActive >= PING_INTERVAL
   ) {
-    //8 seconds inactive threshold
-    logger("\nNO PING (@ " + sessionData.token + ")");
-    endSession(sessionData.token);
+    // inactive threshold
+    endProcess(sessionData.token);
     return;
   }
   if (sessionData.errorTick > 10) {
-    logger(
+    logger.log(
       "\n\n\nCannot resolve errors. Process stopped. (@ " +
         sessionData.token +
         ")"
     );
-    endSession(sessionData.token);
+    endProcess(sessionData.token);
     return;
   }
 
@@ -242,7 +207,7 @@ function requestPage(sessionData, siteData, chapterCount) {
   var $;
   var found = false;
 
-  logger(
+  logger.log(
     "\n\n\nCurrent Link (@ " +
       sessionData.token +
       "): " +
@@ -252,16 +217,16 @@ function requestPage(sessionData, siteData, chapterCount) {
   https
     .get(sessionData.currentLink, (res) => {
       if (res.statusCode !== 200) {
-        logger(
+        logger.log(
           "\n\n\nResponse code from URL (@ " +
             sessionData.token +
             "): " +
             res.statusCode
         );
-        logger("\nMessage (@ " + sessionData.token + "): " + res.statusMessage);
-        logger("\nProcess stopped.");
+        logger.log("\nMessage (@ " + sessionData.token + "): " + res.statusMessage);
+        logger.log("\nProcess stopped.");
         res.resume();
-        endSession(sessionData.token);
+        endProcess(sessionData.token);
         return;
       }
 
@@ -270,19 +235,19 @@ function requestPage(sessionData, siteData, chapterCount) {
           htmlData.push(data); //this is better for cheerio instead of concatenation
         })
         .once("error", (e) => {
-          logger(
+          logger.log(
             "\n\n\nHTTPS Response Stream Error (@ " +
               sessionData.token +
               "): " +
               e.message
           );
-          logger("\nProcess stopped. (@ " + sessionData.token + ")");
-          endSession(sessionData.token);
+          logger.log("\nProcess stopped. (@ " + sessionData.token + ")");
+          endProcess(sessionData.token);
         });
 
       res.once("end", () => {
         if (!res.complete)
-          logger(
+          logger.log(
             "\n\n\nPartial data from URL (@ " +
               sessionData.token +
               "): " +
@@ -293,7 +258,7 @@ function requestPage(sessionData, siteData, chapterCount) {
         $ = cheerio.load(htmlData.join(""));
 
         found = isChapterAndUpdateNext($, sessionData, siteData);
-        logger(
+        logger.log(
           "Next link from chapter (@ " +
             sessionData.token +
             "): " +
@@ -304,7 +269,7 @@ function requestPage(sessionData, siteData, chapterCount) {
           found = getChapterAndWriteToFile($, sessionData, siteData);
         } else {
           found = novelInfoAndUpdateNext($, sessionData, siteData);
-          logger(
+          logger.log(
             "Next link from main page (@ " +
               sessionData.token +
               "): " +
@@ -316,20 +281,20 @@ function requestPage(sessionData, siteData, chapterCount) {
           sessionData.numOfChapters &&
           ++chapterCount > sessionData.numOfChapters
         ) {
-          logger("\nProcess complete. (@ " + sessionData.token + ")");
-          endSession(sessionData.token);
+          logger.log("\nProcess complete. (@ " + sessionData.token + ")");
+          endProcess(sessionData.token);
           return;
         }
 
-        if (!found || sessionData.errorTick > 10) {
-          logger("Aborted. (@ " + sessionData.token + ")");
-          endSession(sessionData.token);
+        if (!found || sessionData.errorTick > 10 || sessionData.hasEnded) {
+          logger.log("Aborted. (@ " + sessionData.token + ")");
+          endProcess(sessionData.token);
           return;
         }
 
         if (sessionData.nextLink) {
           sessionData.currentLink = siteData.baseURL + sessionData.nextLink;
-          logger(
+          logger.log(
             "Next page (@ " +
               sessionData.token +
               "): " +
@@ -340,22 +305,22 @@ function requestPage(sessionData, siteData, chapterCount) {
             requestPage(sessionData, siteData, chapterCount);
           }, PAGE_REQUEST_INTERVAL);
         } else {
-          logger("\nNo more links. (@ " + sessionData.token + ")");
-          endSession(sessionData.token);
+          logger.log("\nNo more links. (@ " + sessionData.token + ")");
+          endProcess(sessionData.token);
         }
       });
     })
     .once("error", (e) => {
-      logger(
+      logger.log(
         "\n\n\nHTTPS Get Error (@ " + sessionData.token + "): " + e.message
       );
 
       if (++sessionData.errorTick > 10) {
         /*termination after 10 error ticks*/
-        logger("\n\n\nCannot resolve errors. Process stopped.");
-        endSession(sessionData.token);
+        logger.log("\n\n\nCannot resolve errors. Process stopped.");
+        endProcess(sessionData.token);
       } else {
-        logger(
+        logger.log(
           "\nWill try again in: " +
             (PAGE_REQUEST_INTERVAL * 2) / 1000 +
             " seconds."
@@ -371,7 +336,7 @@ function requestPage(sessionData, siteData, chapterCount) {
 function isChapterAndUpdateNext($, sessionData, siteData) {
   var elements = $(siteData.nextBtn);
 
-  logger(
+  logger.log(
     "Nav buttons in chapter (@ " + sessionData.token + "): " + elements.length
   );
 
@@ -387,7 +352,7 @@ function isChapterAndUpdateNext($, sessionData, siteData) {
 function novelInfoAndUpdateNext($, sessionData, siteData) {
   var elements = $(siteData.readChapterBtn);
 
-  logger(
+  logger.log(
     "Nav buttons in main (@ " + sessionData.token + "): " + elements.length
   );
 
@@ -403,8 +368,10 @@ function novelInfoAndUpdateNext($, sessionData, siteData) {
 
 /*select functions based on website*/
 function getChapterAndWriteToFile($, sessionData, siteData) {
-  if (sessionData.writeStream.socket._writableState.ended) return false;
-
+  if (sessionData.writeStream.socket._writableState.ended) {
+    sessionData.hasEndednd = true;
+    return false;
+}
   var content = null;
   switch (siteData.id) {
     case 0:
@@ -522,7 +489,7 @@ async function writeToClient(sessionData, novel) {
       });
     }
   } catch (err) {
-    logger(
+    logger.log(
       "\n\n\nStream Header write Error (@ " +
         sessionData.token +
         "): " +
@@ -533,7 +500,7 @@ async function writeToClient(sessionData, novel) {
 
   var canWrite = sessionData.writeStream.write(novel, () => {
     sessionData.chapter.content = null;
-    logger(
+    logger.log(
       "Session " +
         sessionData.token +
         ": " +
@@ -561,16 +528,16 @@ async function drain(sessionData) {
 //
 //   if(!sessionData.writeStream){
 //
-//      logger("\n\n\nCreate stream : " + sessionData.fileName);
+//      logger.log("\n\n\nCreate stream : " + sessionData.fileName);
 //      sessionData.writeStream = fs.createWriteStream(DOWNLOADS_PATH + '/' + sessionData.fileName, {flags: 'a+'});
 //
 //      sessionData.writeStream.once('ready', ()=>{
-//        logger("\nReady to write: " + sessionData.fileName);
+//        logger.log("\nReady to write: " + sessionData.fileName);
 //        canWrite = writeServerFile(sessionData, novel);
 //      });
 //
 //     sessionData.writeStream.once('error', (err)=>{
-//        logger("\n\n\nStream Write Error (@ " + sessionData.token + "): " + err.message);
+//        logger.log("\n\n\nStream Write Error (@ " + sessionData.token + "): " + err.message);
 //        sessionData.errorTick = 11;
 //      });
 //    }
@@ -588,29 +555,29 @@ async function drain(sessionData) {
 //
 //   return sessionData.writeStream.write(novel, () =>{
 //       sessionData.chapter.content = null;
-//       logger("Session " + sessionData.token + ": " + "Novel " +
+//       logger.log("Session " + sessionData.token + ": " + "Novel " +
 //       sessionData.title + " Chapter " + sessionData.chapter.num + ' written!');
 //    });
 // }
 
 /*Run at server start*/
 app.listen(PORT, function () {
-  logger("\n\n\nServer started");
-  logger("\n\n\nListening on port: " + PORT);
+  logger.log("\n\n\nServer started");
+  logger.log("\n\n\nListening on port: " + PORT);
   loadSiteMap();
 
   /*CODE FOR WRITE ON SERVER DISK */
   //  fs.access(DOWNLOADS_PATH, fs.constants.F_OK, (err) => {
   //
   //    if(err && err.code === 'ENOENT'){  //no folder, then create
-  //     logger("\n\n\nFolder Access Error: " + err.message);
-  //     logger("\nCreating directory...");
+  //     logger.log("\n\n\nFolder Access Error: " + err.message);
+  //     logger.log("\nCreating directory...");
   //      fs.mkdirSync(DOWNLOADS_PATH);
   //    }else if(err){
-  //      logger("\n\n\nSomething went wrong!\nFolder Access Error: " + err.message); //other errors
+  //      logger.log("\n\n\nSomething went wrong!\nFolder Access Error: " + err.message); //other errors
   //      process.exit(1);
   //    }  else {
-  //      logger("\n\n\n" + DOWNLOADS_PATH +  " already exists!");  //folder exists
+  //      logger.log("\n\n\n" + DOWNLOADS_PATH +  " already exists!");  //folder exists
   //    }
   //
   // });
@@ -618,15 +585,15 @@ app.listen(PORT, function () {
 
 /*load sites from JSON file */
 function loadSiteMap() {
-  logger("\n\n\nLoading Site Maps.");
+  logger.log("\n\n\nLoading Site Maps.");
 
   try {
     JSON.parse(fs.readFileSync(SITES_JSON_PATH)).forEach((site) => {
       loadSite(site);
     });
   } catch (err) {
-    logger("\n\n\nJSON File Read Error: " + err);
-    logger("\nUsing default sites.\n");
+    logger.log("\n\n\nJSON File Read Error: " + err);
+    logger.log("\nUsing default sites.\n");
     loadDefaultSiteMap();
   }
 }
@@ -639,24 +606,9 @@ function loadDefaultSiteMap() {
 
 function loadSite(site) {
   siteMap.set(site.baseURL.split("/")[2], site);
-  logger("Loading site: " + site.baseURL);
+  logger.log("Loading site: " + site.baseURL);
 }
 
-/*DEBUGGING LOGS*/
-
-//const logFile = fs.createWriteStream(PATH + '/' + "logger.txt", {flags: 'w+'});
-
-// logFile.on('error', (err)=>{
-//
-// console.log("Logging Error: " + err.message);
-// });
-
-var logger = function (obj) {
-  if (typeof obj !== "string") obj = util.inspect(obj);
-
-  console.log(obj);
-  //  logFile.write(obj + " at " + Date() + '\n');
-};
 
 /*write memory usage every 10 minutes */
 
@@ -664,5 +616,5 @@ setInterval(function () {
   if (typeof gc === "function") {
     gc();
   }
-  logger(process.memoryUsage());
+  logger.log(process.memoryUsage());
 }, 600000);
